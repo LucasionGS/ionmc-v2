@@ -147,8 +147,9 @@ export class Server extends EventEmitter {
 
       res.on("data", (chunk) => {
         downloaded += chunk.length;
-        const percentComplete = (downloaded / total) * 100;
-        opts.progressStream?.write(`Download progress: ${percentComplete.toFixed(2)}%`);
+        // const percentComplete = (downloaded / total) * 100;
+        // opts.progressStream?.write(`Download progress: ${percentComplete.toFixed(2)}%`);
+        opts.progressStream?.write(`Progress: ${downloaded}/${total}`);
         stream.write(chunk);
       });
 
@@ -290,6 +291,7 @@ export class Server extends EventEmitter {
     });
 
     ptyProcess.onExit((code) => {
+      this.ready = false;
       this.emit("exit", code.exitCode);
     });
   }
@@ -315,6 +317,7 @@ export class Server extends EventEmitter {
     }
     else if (result = msg.match(/Done \(\d+\.\d+s\)! For help, type "help"/)) {
       this.emit("ready", result[1]);
+      this.ready = true;
     }
     else if (data.type == "minecraft" && data.thread == "Main" && (result = msg.match(/eula.txt/))) {
       this.emit("eula", "EULA not accepted. Please set `eula=true` in eula.txt.");
@@ -580,6 +583,31 @@ export class Server extends EventEmitter {
       await fsp.writeFile(eulaPath, "eula=true");
     }
   }
+
+  public async getOperators(): Promise<Server.Operator[]> {
+    const opsPath = Path.resolve(this.path, "ops.json");
+    if (await fsp.stat(opsPath).then(() => true).catch(() => false)) {
+      const data = await fsp.readFile(opsPath, "utf-8");
+      const players: Server.Operator[] = JSON.parse(data);
+      return players;
+    }
+    throw new Error("Ops file not found.");
+  }
+
+  private ready: boolean = false;
+
+  public isRunning() {
+    return !!this.ptyProcess;
+  }
+
+  public isReady() {
+    return this.ready;
+  }
+
+  public getStatus() {
+    if (this.isRunning()) return this.isReady() ? "running" : "starting";
+    else return "offline";
+  }
 }
 
 export interface Server {
@@ -660,6 +688,13 @@ export namespace Server {
 
   export interface InstallOptions {
     progressStream?: ProgressStream;
+  }
+
+  export interface Operator {
+    uuid: string,
+    name: string,
+    level: number,
+    bypassesPlayerLimit: boolean
   }
 
   export class ProgressStream extends Writable {

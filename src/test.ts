@@ -4,15 +4,16 @@ import Server from "./objects/Server";
 import { wait } from "./Utilities";
 
 (async () => {
-  // const server = new Server("./tests/testserver");
-  const server = new ForgeServer("./tests/forgeserver");
+  const server = new Server("./tests/testserver");
+  // const server = new ForgeServer("./tests/forgeserver");
   await server.ensurePathExists();
   server.setName("Test Server");
   server.setMemory(2048);
-  server.setVersion("1.20.1");
-  // if (server instanceof ForgeServer) {
-  //   server.setForgeVersion("54.0.6");
-  // }
+  server.setVersion("latest");
+  if (server instanceof ForgeServer) {
+    server.setVersion("1.20.1");
+    // server.setForgeVersion("54.0.6");
+  }
   server.acceptEula();
 
   if (!await server.checkInstalled()) {
@@ -137,13 +138,13 @@ import { wait } from "./Utilities";
       console.log("Player joined: ", player);
       await wait(5000);
       server.writeLine(`say Welcome, ${player}!`);
-      await wait(1000);
-      server.writeLine(`say You are about to get kicked in 5 seconds!`);
-      await wait(5000);
-      server.writeLine(`kick ${player} You have been kicked!`);
+      // await wait(1000);
+      // server.writeLine(`say You are about to get kicked in 5 seconds!`);
+      // await wait(5000);
+      // server.writeLine(`kick ${player} You have been kicked!`);
 
-      await wait(1000);
-      server.stop();
+      // await wait(1000);
+      // server.stop();
     });
 
     try {
@@ -158,7 +159,7 @@ import { wait } from "./Utilities";
   });
 
   server.on("exit", (code) => {
-    // process.exit(0);
     console.log("Server exited", code);
+    process.exit(0);
   });
 })();
