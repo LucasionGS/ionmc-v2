@@ -1,10 +1,10 @@
-import fs from "fs";
-import fsp from "fs/promises";
-import Path from "path";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import Path from "node:path";
 import * as pty from "node-pty";
 import { wait } from "../Utilities";
 import Server from "./Server";
-import os from "os";
+import os from "node:os";
 import MinecraftApi from "../MinecraftApi";
 
 /**

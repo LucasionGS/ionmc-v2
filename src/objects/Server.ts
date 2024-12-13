@@ -1,15 +1,15 @@
 import MinecraftApi from "../MinecraftApi";
-import fs from "fs";
-import fsp from "fs/promises";
-import Path from "path";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import Path from "node:path";
 import * as pty from "node-pty";
-import EventEmitter from "events";
-import rl from "readline";
+import EventEmitter from "node:events";
+import rl from "node:readline";
 import RCON from "../Rcon";
 import { escapeHTML, wait } from "../Utilities";
-import { Writable } from "stream";
-import http from "http";
-import url from "url";
+import { Writable } from "node:stream";
+import http from "node:http";
+import url from "node:url";
 
 /**
  * Represents a minecraft server.

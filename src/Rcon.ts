@@ -1,4 +1,4 @@
-import net from "net";
+import net from "node:net";
 
 /**
  * RCON class for connecting to a Minecraft RCON server
