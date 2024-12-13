@@ -3,11 +3,13 @@ import fs from "fs";
 import fsp from "fs/promises";
 import Path from "path";
 import * as pty from "node-pty";
-import { WriteStream } from "tty";
 import EventEmitter from "events";
 import rl from "readline";
 import RCON from "../Rcon";
-import { wait } from "../Utilities";
+import { escapeHTML, wait } from "../Utilities";
+import { Writable } from "stream";
+import http from "http";
+import url from "url";
 
 /**
  * Represents a minecraft server.
@@ -116,16 +118,50 @@ class Server extends EventEmitter {
    * 
    * Classes that extend this class should override this function if the server jar is different from default. (e.g. Forge, Fabric, Spigot, etc.)
    */
-  public async installServer() {
+  public async installServer(opts?: Server.InstallOptions) {
+    opts ??= {};
     const versionData = await MinecraftApi.getServerData(this.version ?? "latest");
     this.version = versionData.id;
-    console.log(`Installing server ${versionData.downloads.server.url}`);
 
-    // Download the server jar
+    opts.progressStream?.write(`Installing server ${versionData.downloads.server.url}`);
+
+    const downloadUrl = versionData.downloads.server.url;
+    const parsedUrl = url.parse(downloadUrl);
+
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: parsedUrl.path,
+      method: "GET"
+    };
+
     const stream = fs.createWriteStream(this.getServerJarPath());
-    const buf = Buffer.from(await fetch(versionData.downloads.server.url).then(res => res.arrayBuffer()));
-    stream.write(buf);
-    stream.end();
+
+    const req = http.request(options, (res) => {
+      if (res.statusCode !== 200) {
+        throw new Error(`Failed to download server jar: ${res.statusMessage}`);
+      }
+
+      const total = parseInt(res.headers["content-length"] || "0", 10);
+      let downloaded = 0;
+
+      res.on("data", (chunk) => {
+        downloaded += chunk.length;
+        const percentComplete = (downloaded / total) * 100;
+        opts.progressStream?.write(`Download progress: ${percentComplete.toFixed(2)}%`);
+        stream.write(chunk);
+      });
+
+      res.on("end", () => {
+        stream.end();
+      });
+    });
+
+    req.on("error", (err) => {
+      throw new Error(`Network error while downloading server jar: ${err.message}`);
+    });
+
+    req.end();
 
     return new Promise<void>((resolve, reject) => {
       stream.on("finish", () => {
@@ -196,9 +232,12 @@ class Server extends EventEmitter {
   }
 
   public ptyProcess?: pty.IPty;
-  public stdout: ParsedData[] = [];
+  public stdout: Server.ParsedData[] = [];
   // public stderr = new WriteStream(0);
 
+  /**
+   * Start the server. This will start the server process based on the settings it was given and attach events to it.
+   */
   public async start() {
     // Start the server
     this.ptyProcess = pty.spawn(this.javaPath, [
@@ -206,11 +245,9 @@ class Server extends EventEmitter {
       `-Xmx${this.memory[1]}M`,
       "-jar",
       this.getServerJarPath(),
-      "nogui"
+      "--nogui"
     ], {
       name: "xterm-color",
-      // cols: 80,
-      // rows: 30,
       cwd: this.path,
       env: process.env,
     });
@@ -218,11 +255,35 @@ class Server extends EventEmitter {
     this.attachPtyEvents(this.ptyProcess);
   }
 
+  /**
+   * Restart the server. This will stop the server and start it again.
+   */
+  public async restart() {
+    await this.stop();
+    await wait(1000);
+    return await this.start();
+  }
+
+  /**
+   * Attach events to the pty process. This ensures the server data is parsed and emitted as events.
+   */
   protected attachPtyEvents(ptyProcess: pty.IPty) {
+    let partial = "";
     ptyProcess.onData((data) => {
+      // data = data.replace(/\r/g, "");
+      // console.log("RAW:", JSON.stringify(data));
+      
+      if (data.endsWith("\n") || data.endsWith("\r")) {
+        data = partial + data;
+        partial = "";
+      }
+      else {
+        partial += data;
+        return;
+      }
       // Example:
       // Done (25.931s)! For help, type "help"
-      const parsed = Server.parseData(data);
+      const parsed = this.parseData(data);
       this.checkEvents(parsed);
       this.stdout.push(parsed);
       this.emit("data", parsed);
@@ -233,26 +294,37 @@ class Server extends EventEmitter {
     });
   }
 
-  private checkEvents(data: string | ParsedData) {
+  /**
+   * Check for events in the server data and execute the corresponding event.
+   */
+  private checkEvents(data: string | Server.ParsedData) {
     if (typeof data === "string") {
-      data = Server.parseData(data);
+      data = this.parseData(data);
     }
 
     const msg = data.message;
     let result: RegExpMatchArray | null;
 
     if (result = msg.match(/(.*?) joined the game/)) {
+      this.players.add(result[1]);
       this.emit("join", result[1]);
     }
     else if (result = msg.match(/(.*?) left the game/)) {
+      this.players.delete(result[1]);
       this.emit("leave", result[1]);
     }
     else if (result = msg.match(/Done \(\d+\.\d+s\)! For help, type "help"/)) {
-      this.emit("ready");
+      this.emit("ready", result[1]);
+    }
+    else if (data.type == "minecraft" && data.thread == "Main" && (result = msg.match(/eula.txt/))) {
+      this.emit("eula", "EULA not accepted. Please set `eula=true` in eula.txt.");
     }
   }
 
-  private static parseData(data: string): ParsedData {
+  /**
+   * Parses the data from the server.
+   */
+  protected parseData(data: string): Server.ParsedData {
     // Example:
     // [14:47:20] [Worker-Main-2/INFO]: Preparing spawn area: 71%
     const format = /\[(\d+:\d+:\d+)\] \[(.+?)\/(\w+)\]: (.+)/;
@@ -263,31 +335,22 @@ class Server extends EventEmitter {
         time,
         thread,
         type,
-        message
+        message: message.trim()
       };
     }
     return {
-      message: data
+      message: data.trim()
     };
   }
 
   /**
    * Formats the data to a readable string. Colors are used to differentiate the different parts of the data. Uses the default color mode for this server if set and not passed as an argument.
    */
-  private toFormattedString(data: string | ParsedData, colorMode?: Server.ColorMode): string {
-    return Server.toFormattedString(data, this.colorMode ?? colorMode);
-  }
-
-  /**
-   * Formats the data to a readable string. Colors are used to differentiate the different parts of the data.
-   * @returns 
-   */
-  private static toFormattedString(data: string | ParsedData, colorMode?: Server.ColorMode): string {
-
+  private toFormattedString(data: string | Server.ParsedData, colorMode?: Server.ColorMode): string {
     colorMode ??= Server.defaultColorMode;
 
     if (typeof data === "string") {
-      data = Server.parseData(data);
+      data = this.parseData(data);
     }
 
     if (!data.time) {
@@ -299,7 +362,7 @@ class Server extends EventEmitter {
     }
 
     if (!data.thread) {
-      data.thread = "Main";
+      data.thread = "IonMC Main";
     }
 
     if (!data.type) {
@@ -310,16 +373,24 @@ class Server extends EventEmitter {
       case Server.ColorMode.Terminal:
         return `\x1b[36m[${data.time}]\x1b[0m \x1b[32m[${data.thread}/${data.type}]\x1b[0m: ${data.message}`;
       case Server.ColorMode.HTML:
-        return `<span style="color: #0099ff;">[${data.time}]</span> <span style="color: #00cc00;">[${data.thread}/${data.type}]</span>: ${data.message}`;
+        return `<span style="color: #0099ff;">[${escapeHTML(data.time)}]</span> <span style="color: #00cc00;">[${escapeHTML(data.thread)}/${escapeHTML(data.type)}]</span>: ${escapeHTML(data.message)}`;
       default:
         return `[${data.time}] [${data.thread}/${data.type}]: ${data.message}`;
     }
   }
 
+  /**
+   * Write data to the server
+   * @param data The data to write to the server.
+   */
   public write(data: string) {
     this.ptyProcess?.write(data);
   }
 
+  /**
+   * Write a line of data to the server. This will append a newline character to the end of the data.
+   * @param data The data to write to the server.
+   */
   public writeLine(data: string) {
     this.ptyProcess?.write(data + "\n");
   }
@@ -327,26 +398,45 @@ class Server extends EventEmitter {
   /**
    * Stop the server. This will send the `stop` command to the server and is equivalent to `server.writeLine("stop")`.
    */
-  public stop() {
+  public async stop() {
     this.writeLine("stop");
+    return new Promise<void>((resolve) => {
+      this.once("exit", () => {
+        resolve();
+      });
+    });
   }
 
+  /**
+   * Kill the server process.
+   */
   public kill() {
     this.ptyProcess?.kill();
   }
 
+  /**
+   * List of players currently online on the server. Updated automatically when players join or leave the server.
+   */
+  public players: Set<string> = new Set();
+  
+  /**
+   * Get a list of players currently online on the server. It checks using the `list` command.  
+   * It will update the `players` property of the server.
+   * @returns A promise that resolves with an array of player names.
+   */
   public getPlayers() {
     return new Promise<string[]>((resolve, reject) => {
       const players: string[] = [];
-      const dataHandler = (data: ParsedData) => {
+      const dataHandler = (data: Server.ParsedData) => {
         const result = data.message.match(/There are \d+ of a max of \d+ players online:\s*(.*)/);
         if (result) {
-          players.push(...result[1].trim().split(", ").filter(Boolean));
+          players.push(...result[1].split(",").map(a => a.trim()).filter(Boolean));
+          this.players = new Set(players);
           this.off("data", dataHandler);
           resolve(players);
         }
       };
-      
+
       this.on("data", dataHandler);
       this.writeLine("list");
 
@@ -360,6 +450,25 @@ class Server extends EventEmitter {
   private _rlInterface?: rl.Interface;
 
   /**
+   * Log data from the server to a stream.
+   * @param data The data to log.
+   * @param stdout The stream to log the data to. Default is process.stdout.
+   */
+  public logger(data: string | Server.ParsedData, stdout = process.stdout) {
+    const formatted = this.toFormattedString(data);
+    stdout.write(formatted + "\n");
+  }
+
+  /**
+   * Create a logger function that can be used to log data from the server to a stream.
+   * @param stdout The stream to log the data to. Default is process.stdout.
+   * @returns 
+   */
+  public createLogger(stdout = process.stdout) {
+    return (data: string | Server.ParsedData) => this.logger(data, stdout);
+  }
+  
+  /**
    * Attach a readstream and writestream to the server. This will allow a readline interface to be created in a terminal environment.
    * 
    * Default is process.stdin and process.stdout.
@@ -367,7 +476,14 @@ class Server extends EventEmitter {
    * @param stdout Writestream to attach to the server.
    * @param middleware Middleware function to handle the input before sending it to the server. Return false to prevent the input from being sent to the server. Return a string to change the input.
    */
-  public attach(stdin = process.stdin, stdout = process.stdout, middleware?: (data: string) => string | boolean | void) {
+  public attach(stdin = process.stdin, stdout = process.stdout, middleware?: Server.AttachMiddleware, opt?: {
+    /**
+     * Keep the streams attached to the server even after the server is stopped.
+     */
+    keepAttached?: boolean;
+  }) {
+    opt ??= {};
+
     this._rlInterface = rl.createInterface({
       input: stdin,
       output: stdout
@@ -381,17 +497,13 @@ class Server extends EventEmitter {
           line = result;
         }
       }
-      
+
       this.writeLine(line);
     });
 
-    const dataListener = (data: ParsedData): void => {
-      stdout.write(
-        this.toFormattedString(data) + "\n"
-      );
-    };
+    const dataListener = this.createLogger(stdout);
 
-    const unsubExit = this.ptyProcess?.onExit((code) => {
+    const unsubExit = opt.keepAttached ? null : this.ptyProcess?.onExit((code) => {
       this.detach();
       this.off("data", dataListener);
       unsubExit?.dispose();
@@ -421,16 +533,23 @@ class Server extends EventEmitter {
    * RCON interface for the server. Undefined if not connected.
    */
   public rcon?: RCON;
-  
+
   /**
-   * Connect to the server's RCON interface.
+   * Connect to the server's RCON interface. Requires the `enable-rcon` and `rcon.password` properties to be set in the server.properties file.
+   * 
+   * @throws Error if the RCON password is not found in the server.properties file.
    */
   public async connectRcon() {
     const properties = await Server.parseProperties(fs.readFileSync(this.getServerPropertiesPath(), "utf-8"));
 
     const host = properties["server-ip"] || "localhost";
     const port = parseInt(properties["rcon.port"] ?? "25575");
+    const enabled = properties["enable-rcon"];
     const password = properties["rcon.password"];
+
+    if (!enabled || !password) {
+      throw new Error("RCON password not found in server.properties. Please set both the `enable-rcon` and `rcon.password` properties in the server.properties file.");
+    }
 
     this.rcon = new RCON();
     await this.rcon.connect(host, port, password);
@@ -445,16 +564,32 @@ class Server extends EventEmitter {
     this.rcon?.disconnect();
     this.rcon = undefined;
   }
+
+  /**
+   * Accept the EULA for the server. This will set `eula=true` in the eula.txt file.
+   */
+  public async acceptEula() {
+    const eulaPath = Path.resolve(this.path, "eula.txt");
+    if (await fsp.stat(eulaPath).then(() => true).catch(() => false)) {
+      const eula = await fsp.readFile(eulaPath, "utf-8");
+      if (!eula.match(/eula=true/)) {
+        await fsp.writeFile(eulaPath, "eula=true");
+      }
+    }
+    else {
+      await fsp.writeFile(eulaPath, "eula=true");
+    }
+  }
 }
 
 interface Server {
   // Events
 
   // Data
-  emit(event: "data", data: ParsedData): boolean;
-  on(event: "data", listener: (data: ParsedData) => void): this;
-  once(event: "data", listener: (data: ParsedData) => void): this;
-  off(event: "data", listener: (data: ParsedData) => void): this;
+  emit(event: "data", data: Server.ParsedData): boolean;
+  on(event: "data", listener: (data: Server.ParsedData) => void): this;
+  once(event: "data", listener: (data: Server.ParsedData) => void): this;
+  off(event: "data", listener: (data: Server.ParsedData) => void): this;
 
   // Exit
   emit(event: "exit", code: number): boolean;
@@ -469,10 +604,10 @@ interface Server {
   off(event: "error", listener: (error: Error) => void): this;
 
   // Ready
-  emit(event: "ready"): boolean;
-  on(event: "ready", listener: () => void): this;
-  once(event: "ready", listener: () => void): this;
-  off(event: "ready", listener: () => void): this;
+  emit(event: "ready", message: string): boolean;
+  on(event: "ready", listener: (message: string) => void): this;
+  once(event: "ready", listener: (message: string) => void): this;
+  off(event: "ready", listener: (message: string) => void): this;
 
   // Player join
   emit(event: "join", player: string): boolean;
@@ -485,12 +620,27 @@ interface Server {
   on(event: "leave", listener: (player: string) => void): this;
   once(event: "leave", listener: (player: string) => void): this;
   off(event: "leave", listener: (player: string) => void): this;
+
+  // EULA not accepted
+  emit(event: "eula", message: string): boolean;
+  on(event: "eula", listener: (message: string) => void): this;
+  once(event: "eula", listener: (message: string) => void): this;
+  off(event: "eula", listener: (message: string) => void): this;
 }
 
 namespace Server {
   export enum ColorMode {
+    /**
+     * Uses ANSI escape codes.
+     */
     Terminal,
+    /**
+     * Uses HTML span tags with style.
+     */
     HTML,
+    /**
+     * No color formatting.
+     */
     None
   }
 
@@ -498,13 +648,31 @@ namespace Server {
    * Default color mode for all servers. This can be overridden by setting the `defaultColorMode` property of the server instance, or handing it as an argument to the `toFormattedString` function.
    */
   export let defaultColorMode: Server.ColorMode = Server.ColorMode.Terminal;
+
+  export interface ParsedData {
+    message: string;
+    time?: string;
+    thread?: string;
+    type?: string;
+  }
+
+  export type AttachMiddleware = (data: string) => string | boolean | void;
+
+  export interface InstallOptions {
+    progressStream?: ProgressStream;
+  }
+
+  export class ProgressStream extends Writable {
+    constructor() {
+      super();
+    }
+
+    _write(chunk: any, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+      this.emit("data", chunk.toString());
+      callback();
+    }
+  }
 }
 
-interface ParsedData {
-  message: string;
-  time?: string;
-  thread?: string;
-  type?: string;
-}
 
 export default Server;

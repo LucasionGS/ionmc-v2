@@ -9,7 +9,6 @@ export default class RCON {
   private responseBuffer: Buffer | null;
 
   constructor() {
-    throw new Error("Not yet implemented");
     this.socket = new net.Socket();
     this.requestId = 0; // Increment with each request
     this.responseBuffer = null; // Buffer to collect fragmented responses
@@ -25,8 +24,6 @@ export default class RCON {
   public connect(host: string, port: number, password: string): Promise<void> {
     return new Promise((resolve, reject) => {
       this.socket.connect(port, host, () => {
-        console.log("Connected to RCON server");
-        
         // Send the auth packet after connecting
         this.sendPacket(this.requestId++, 3, password)
           .then((response) => {
@@ -48,7 +45,6 @@ export default class RCON {
   public async disconnect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.socket.end(() => {
-        console.log("Disconnected from RCON server");
         resolve();
       });
 
@@ -91,7 +87,7 @@ export default class RCON {
       // Bind to 'data' event once for the next incoming data packet
       this.socket.once("data", onData);
 
-      this.socket.on("error", (err) => {
+      this.socket.once("error", (err) => {
         reject(err);
       });
     });
