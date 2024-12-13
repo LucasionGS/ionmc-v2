@@ -3,7 +3,7 @@ import net from "node:net";
 /**
  * RCON class for connecting to a Minecraft RCON server
  */
-export default class RCON {
+export class RCON {
   private socket: net.Socket;
   private requestId: number;
   private responseBuffer: Buffer | null;
@@ -145,3 +145,5 @@ export default class RCON {
     return buffer;
   }
 }
+
+export default RCON;

@@ -14,7 +14,7 @@ import url from "node:url";
 /**
  * Represents a minecraft server.
  */
-class Server extends EventEmitter {
+export class Server extends EventEmitter {
   constructor(
     /**
      * Path for the root directory of the server.
@@ -582,7 +582,7 @@ class Server extends EventEmitter {
   }
 }
 
-interface Server {
+export interface Server {
   // Events
 
   // Data
@@ -628,7 +628,7 @@ interface Server {
   off(event: "eula", listener: (message: string) => void): this;
 }
 
-namespace Server {
+export namespace Server {
   export enum ColorMode {
     /**
      * Uses ANSI escape codes.

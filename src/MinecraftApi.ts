@@ -1,4 +1,4 @@
-namespace MinecraftApi {
+export namespace MinecraftApi {
   export interface VersionManifest {
     latest: {
       release: string;

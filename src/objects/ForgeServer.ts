@@ -11,7 +11,7 @@ import MinecraftApi from "../MinecraftApi";
  * Represents a Forge minecraft server.
  * @experimental
  */
-class ForgeServer extends Server {
+export class ForgeServer extends Server {
 
   protected forgeVersion?: string;
 
