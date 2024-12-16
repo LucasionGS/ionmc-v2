@@ -216,12 +216,22 @@ export class ForgeServer extends Server {
     
     let id = modData.id.toString();
     let fileName: string = modData.fileName;
-    const url = `https://mediafilez.forgecdn.net/files/${id.slice(0, 4)}/${id.slice(4)}/${fileName}`;
+    let [slice1, slice2] = [id.slice(0, 4), id.slice(4)];
+    while (slice2.startsWith("0")) {
+      slice2 = slice2.slice(1);
+    }
+    const url = `https://mediafilez.forgecdn.net/files/${slice1}/${slice2}/${encodeURIComponent(fileName)}`;
     
     const tmp = `${os.tmpdir()}/${id}_mod.jar`;
 
     const stream = fs.createWriteStream(tmp);
-    const buf = Buffer.from(await fetch(url).then(res => res.arrayBuffer()));
+    const buf = Buffer.from(await fetch(url).then(res => {
+      if (!res.ok) {
+        console.error(url);
+        throw new Error(`Failed to download mod: ${res.status} ${res.statusText}`);
+      }
+      return res.arrayBuffer();
+    }));
     stream.write(buf);
     stream.end();
 
