@@ -46,7 +46,7 @@ export class ForgeServer extends Server {
     this.attachPtyEvents(this.ptyProcess);
   }
 
-  protected parseData(data: string): Server.ParsedData {
+  public static parseData(data: string): Server.ParsedData {
     // Example:
     // [14:47:20] [Worker-Main-2/INFO]: Preparing spawn area: 71%
     const format = /\[(\d+:\d+:\d+)\] \[(.+?)\/(\w+)\](?: \[.+?\/\w*\])?: (.+)/;

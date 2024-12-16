@@ -76,6 +76,10 @@ export class Server extends EventEmitter {
     return this;
   }
 
+  public get _static() {
+    return this.constructor as typeof Server;
+  }
+
   /**
    * Path to the java executable.
    */
@@ -281,7 +285,7 @@ export class Server extends EventEmitter {
       }
       // Example:
       // Done (25.931s)! For help, type "help"
-      const parsed = this.parseData(data);
+      const parsed = this._static.parseData(data);
       this.checkEvents(parsed);
       this.stdout.push(parsed);
       this.emit("data", parsed);
@@ -298,7 +302,7 @@ export class Server extends EventEmitter {
    */
   private checkEvents(data: string | Server.ParsedData) {
     if (typeof data === "string") {
-      data = this.parseData(data);
+      data = this._static.parseData(data);
     }
 
     const msg = data.message;
@@ -324,7 +328,7 @@ export class Server extends EventEmitter {
   /**
    * Parses the data from the server.
    */
-  protected parseData(data: string): Server.ParsedData {
+  public static parseData(data: string): Server.ParsedData {
     // Example:
     // [14:47:20] [Worker-Main-2/INFO]: Preparing spawn area: 71%
     const format = /\[(\d+:\d+:\d+)\] \[(.+?)\/(\w+)\]: (.+)/;
@@ -346,7 +350,7 @@ export class Server extends EventEmitter {
   /**
    * Formats the data to a readable string. Colors are used to differentiate the different parts of the data. Uses the default color mode for this server if set and not passed as an argument.
    */
-  private toFormattedString(data: string | Server.ParsedData, colorMode?: Server.ColorMode): string {
+  private static toFormattedString(data: string | Server.ParsedData, colorMode?: Server.ColorMode): string {
     colorMode ??= Server.defaultColorMode;
 
     if (typeof data === "string") {
@@ -455,7 +459,7 @@ export class Server extends EventEmitter {
    * @param stdout The stream to log the data to. Default is process.stdout.
    */
   public logger(data: string | Server.ParsedData, stdout = process.stdout) {
-    const formatted = this.toFormattedString(data);
+    const formatted = this._static.toFormattedString(data);
     stdout.write(formatted + "\n");
   }
 
