@@ -317,8 +317,8 @@ export class Server extends EventEmitter {
       this.emit("leave", result[1]);
     }
     else if (result = msg.match(/Done \(\d+\.\d+s\)! For help, type "help"/)) {
-      this.emit("ready", result[1]);
       this.ready = true;
+      this.emit("ready", result[1]);
     }
     else if (data.type == "minecraft" && data.thread == "Main" && (result = msg.match(/eula.txt/))) {
       this.emit("eula", "EULA not accepted. Please set `eula=true` in eula.txt.");
