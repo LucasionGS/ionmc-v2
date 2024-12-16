@@ -15,6 +15,9 @@ import url from "node:url";
  * Represents a minecraft server.
  */
 export class Server extends EventEmitter {
+  public get name() {
+    return Path.basename(this.path);
+  }
   constructor(
     /**
      * Path for the root directory of the server.
@@ -49,12 +52,6 @@ export class Server extends EventEmitter {
    * Path for the root directory of the server.
    */
   public readonly path: string;
-
-  public name: string = "Server";
-  public setName(name: string): this {
-    this.name = name;
-    return this;
-  }
 
   public memory: [number, number] = [1024, 1024]
   /**

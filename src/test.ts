@@ -7,7 +7,6 @@ import { wait } from "./Utilities";
   const server = new Server("./tests/testserver");
   // const server = new ForgeServer("./tests/forgeserver");
   await server.ensurePathExists();
-  server.setName("Test Server");
   server.setMemory(2048);
   server.setVersion("latest");
   if (server instanceof ForgeServer) {
