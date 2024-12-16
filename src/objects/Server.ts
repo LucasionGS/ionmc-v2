@@ -350,7 +350,7 @@ export class Server extends EventEmitter {
   /**
    * Formats the data to a readable string. Colors are used to differentiate the different parts of the data. Uses the default color mode for this server if set and not passed as an argument.
    */
-  private static toFormattedString(data: string | Server.ParsedData, colorMode?: Server.ColorMode): string {
+  public static toFormattedString(data: string | Server.ParsedData, colorMode?: Server.ColorMode): string {
     colorMode ??= Server.defaultColorMode;
 
     if (typeof data === "string") {
