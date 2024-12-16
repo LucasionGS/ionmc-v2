@@ -184,13 +184,13 @@ export class ForgeServer extends Server {
     }
   }
 
-  public async installMod(modId: number, enable: boolean = true) {
+  public async installMod(modId: number, fileId: number | null = null, enable: boolean = true) {
     const dl = `https://www.curseforge.com/api/v1/mods/${modId}/files?pageIndex=0&pageSize=20&sort=dateCreated&sortDescending=true&removeAlphas=true`;
     const { data } = await fetch(dl).then(res => res.json());
     if (!data) throw new Error("Failed to fetch mod data");
-    const modData = data[0];
-    const id = modData.id.toString();
-    const fileName = modData.fileName;
+    const modData = fileId ? data.find((d: any) => d.id == fileId) : data[0];
+    let id = modData.id.toString();
+    let fileName: string = modData.fileName;
     const url = `https://mediafilez.forgecdn.net/files/${id.slice(0, 4)}/${id.slice(4)}/${fileName}`;
     
     const tmp = `${os.tmpdir()}/${id}_mod.jar`;

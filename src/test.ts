@@ -30,7 +30,7 @@ import { wait } from "./Utilities";
     const mods = available.concat(enabled);
 
     if (!mods.includes("create-1.20.1-0.5.1.j.jar")) {
-      await server.installMod(328085, true);
+      await server.installMod(328085, null, true);
     }
   }
 
