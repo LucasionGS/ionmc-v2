@@ -2,10 +2,11 @@ import MinecraftApi from "./MinecraftApi";
 import ForgeServer from "./objects/ForgeServer";
 import Server from "./objects/Server";
 import { wait } from "./Utilities";
+import fsp from "node:fs/promises";
 
 (async () => {
-  const server = new Server("./tests/testserver");
-  // const server = new ForgeServer("./tests/forgeserver");
+  // const server = new Server("./tests/testserver");
+  const server = new ForgeServer("./tests/forgeserver");
   await server.ensurePathExists();
   server.setMemory(2048);
   server.setVersion("latest");
@@ -26,11 +27,23 @@ import { wait } from "./Utilities";
   }
 
   if (server instanceof ForgeServer) {
-    const { available, enabled } = await server.listMods();
-    const mods = available.concat(enabled);
+    // const { available, enabled } = await server.listMods();
+    // const mods = available.concat(enabled);
 
-    if (!mods.includes("create-1.20.1-0.5.1.j.jar")) {
-      await server.installMod(328085, null, true);
+    // if (!mods.includes("create-1.20.1-0.5.1.j.jar")) {
+    //   await server.installMod(328085, null, true);
+    // }
+    const manifest = await fsp.readFile("./tests/manifest.json", "utf-8").then(JSON.parse);
+    
+    for (let i = 0; i < manifest.files.length; i++) {
+      const file = manifest.files[i];
+      console.log("Installing mod", file.projectID, file.fileID, "...");
+      try {
+        await server.installMod(file.projectID, file.fileID, true);
+        // await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error(error);
+      }
     }
   }
 

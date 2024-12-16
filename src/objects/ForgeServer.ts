@@ -184,11 +184,36 @@ export class ForgeServer extends Server {
     }
   }
 
-  public async installMod(modId: number, fileId: number | null = null, enable: boolean = true) {
-    const dl = `https://www.curseforge.com/api/v1/mods/${modId}/files?pageIndex=0&pageSize=20&sort=dateCreated&sortDescending=true&removeAlphas=true`;
-    const { data } = await fetch(dl).then(res => res.json());
+  /**
+   * Install a mod from CurseForge. If fileId is null or not found, the latest file will be downloaded.  
+   * It is possible for the specific fileId to not be available anymore for whatever reason, if that happens it will install the latest file of that mod.
+   * @param modId CurseForge mod ID
+   * @param fileId Specific file ID to download. If null or couldn't be found, the latest file will be downloaded
+   * @param enable Whether to enable the mod after downloading
+   * @returns The fileID of the downloaded mod. Check this against the fileId parameter to check if it downloaded the specific file or a different file.
+   */
+  public async installMod(modId: number, fileId: number | null = null, enable: boolean = true): Promise<number> {
+    const makeUrl = (page: number = 0) => `https://www.curseforge.com/api/v1/mods/${modId}/files?pageIndex=${page}&pageSize=50&sort=dateCreated&sortDescending=true&removeAlphas=true`
+    let pageIndex = 0;
+    let { data, pagination: { pageSize, totalCount } } = await fetch(makeUrl(pageIndex)).then(res => res.json());
+    const pages = Math.ceil(totalCount / pageSize);
     if (!data) throw new Error("Failed to fetch mod data");
-    const modData = fileId ? data.find((d: any) => d.id == fileId) : data[0];
+
+    let first: any;
+    let modData: any;
+    do {
+      if (!data) {
+        ({ data } = await fetch(makeUrl(++pageIndex)).then(res => res.json()));
+      }
+      if (!first) first = data[0];
+      modData = fileId ? data.find((d: any) => d.id == fileId) : data[0];
+
+      if (!modData) {
+        data = null;
+      }
+    }
+    while (!data && pageIndex < (pages - 1));
+    
     let id = modData.id.toString();
     let fileName: string = modData.fileName;
     const url = `https://mediafilez.forgecdn.net/files/${id.slice(0, 4)}/${id.slice(4)}/${fileName}`;
@@ -200,7 +225,7 @@ export class ForgeServer extends Server {
     stream.write(buf);
     stream.end();
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<number>((resolve, reject) => {
       stream.on("finish", async () => {
         const modsAvailable = Path.join(this.path, "modsavailable");
         await fsp.mkdir(modsAvailable, { recursive: true });
@@ -208,7 +233,7 @@ export class ForgeServer extends Server {
         if (enable) {
           await this.enableMods(fileName);
         }
-        resolve();
+        resolve(id);
       });
       stream.on("error", async (err) => {
         await fsp.rm(tmp);
