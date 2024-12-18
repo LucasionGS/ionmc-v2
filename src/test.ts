@@ -48,10 +48,20 @@ import fsp from "node:fs/promises";
   }
 
   await server.loadProperties();
-  server.setProperty("enable-rcon", "true");
+  server.setProperty("enable-rcon", true);
   server.setProperty("rcon.password", "safepass");
   await server.saveProperties();
 
+  const bool = server.getProperty<boolean>("enable-rcon");
+  console.log("RCON enabled:", bool);
+
+  const number = server.getProperty<number>("server-port");
+  console.log("Server port:", number);
+
+  const string = server.getProperty<string>("level-name");
+  console.log("Level name:", string);
+
+  
   await server.start();
   const serverLog = server.createLogger(process.stdout);
   const attachMiddleware: Server.AttachMiddleware = (line => {

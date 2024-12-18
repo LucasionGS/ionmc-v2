@@ -175,15 +175,15 @@ export class Server extends EventEmitter {
     });
   }
 
-  public properties: Record<string, string> = {};
+  public properties: Record<string, string | number | boolean> = {};
 
-  public setProperty(key: string, value: string): this {
+  public setProperty(key: string, value: string | number | boolean): this {
     this.properties[key] = value;
     return this;
   }
 
-  public getProperty(key: string): string | undefined {
-    return this.properties[key];
+  public getProperty<T extends string | number | boolean>(key: string): T | undefined {
+    return this.properties[key] as T;
   }
 
   public async saveProperties() {
@@ -212,11 +212,19 @@ export class Server extends EventEmitter {
   }
 
   public static async parseProperties(data: string) {
-    const properties: Record<string, string> = {};
+    const properties: Record<string, string | number | boolean> = {};
     const lines = data.split("\n");
     for (const line of lines) {
       const [key, value] = line.split("=");
-      properties[key] = value;
+      if (value === "true" || value === "false") { // Boolean
+        properties[key] = value === "true";
+      }
+      else if (!isNaN(parseInt(value))) { // Number
+        properties[key] = parseInt(value);
+      }
+      else { // String
+        properties[key] = value;
+      }
     }
     return properties;
   }
@@ -546,10 +554,11 @@ export class Server extends EventEmitter {
   public async connectRcon() {
     const properties = await Server.parseProperties(fs.readFileSync(this.getServerPropertiesPath(), "utf-8"));
 
-    const host = properties["server-ip"] || "localhost";
-    const port = parseInt(properties["rcon.port"] ?? "25575");
-    const enabled = properties["enable-rcon"];
-    const password = properties["rcon.password"];
+
+    const host = (properties["server-ip"] || "localhost").toString();
+    const port = +(properties["rcon.port"] ?? "25575");
+    const enabled = properties["enable-rcon"] === "true";
+    const password = properties["rcon.password"] ? properties["rcon.password"].toString() : undefined;
 
     if (!enabled || !password) {
       throw new Error("RCON password not found in server.properties. Please set both the `enable-rcon` and `rcon.password` properties in the server.properties file.");
