@@ -2,7 +2,7 @@
 IonMC is a core of tools for creating, managing, and running Minecraft servers.
 
 ## Predesessor
-[IonMC v2 is the predecessor to "mcserver-plug" aka IonMC v1](https://github.com/LucasionGS/mcserver-plug).
+[IonMC v2 is the successor to "mcserver-plug" aka IonMC v1](https://github.com/LucasionGS/mcserver-plug).
 Where IonMC V1 is a combined CLI tool and library, but was primarily built as a CLI tool.  
 IonMC v2 is a library only and acts as a core for other tools.
 
